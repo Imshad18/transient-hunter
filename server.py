@@ -13,11 +13,11 @@ from pathlib import Path
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from hunter import pipeline
+from hunter import pipeline, share, tns, zenodo
 
 ROOT = Path(__file__).resolve().parent
 app = FastAPI(title="Transient Hunter")
@@ -98,6 +98,131 @@ def get_scan(name: str):
     if not p.exists():
         raise HTTPException(404)
     return FileResponse(p, media_type="application/json")
+
+
+# ------------------------------------------------------------------ contribution
+class Creds(BaseModel):
+    bot_id: str
+    bot_name: str
+    api_key: str
+
+
+class Author(BaseModel):
+    name: str = ""
+    affiliation: str = ""
+    email: str = ""
+    orcid: str = ""
+
+
+class TnsCheck(BaseModel):
+    scan: str
+    oid: str
+    creds: Creds
+    sandbox: bool = False
+
+
+class TnsPreview(BaseModel):
+    scan: str
+    oid: str
+    reporter: str
+    reporting_groupid: str = "0"
+    remarks: str = ""
+    kind: str = "discovery"          # or "photometry"
+    points: list = []
+
+
+class TnsSubmit(BaseModel):
+    report: dict
+    creds: Creds
+    sandbox: bool = True
+
+
+class ZenodoReq(BaseModel):
+    author: Author
+    token: str
+    sandbox: bool = True
+
+
+class PublishReq(BaseModel):
+    id: int
+    token: str
+    sandbox: bool = True
+
+
+def _scan(name):
+    p = pipeline.SCANS / Path(name).name
+    if not p.exists():
+        raise HTTPException(404, "Scan not found")
+    return json.loads(p.read_text())
+
+
+def _cand(scan, oid):
+    for c in _scan(scan)["candidates"]:
+        if c["oid"] == oid:
+            return c
+    raise HTTPException(404, "Object not in this scan")
+
+
+@app.get("/api/tns/choices")
+def tns_choices():
+    return tns.choices()
+
+
+@app.post("/api/tns/check")
+def tns_check(req: TnsCheck):
+    c = _cand(req.scan, req.oid)
+    try:
+        return {"matches": tns.search(c["ra"], c["dec"], req.creds.model_dump(), req.sandbox)}
+    except Exception as exc:
+        raise HTTPException(502, str(exc))
+
+
+@app.post("/api/tns/preview")
+def tns_preview(req: TnsPreview):
+    c = _cand(req.scan, req.oid)
+    if req.kind == "photometry":
+        if not req.points:
+            raise HTTPException(400, "Add at least one measurement")
+        return tns.photometry_report(c, req.reporter, req.reporting_groupid, req.points)
+    return tns.discovery_report(c, req.reporter, req.reporting_groupid, req.remarks)
+
+
+@app.post("/api/tns/submit")
+def tns_submit(req: TnsSubmit):
+    try:
+        return tns.submit(req.report, req.creds.model_dump(), req.sandbox)
+    except Exception as exc:
+        raise HTTPException(502, str(exc))
+
+
+@app.post("/api/astronote/{scan}/{oid}")
+def astronote(scan: str, oid: str, author: Author):
+    return {"text": share.astronote(_cand(scan, oid), author.model_dump())}
+
+
+@app.post("/api/package/{scan}")
+def package(scan: str, author: Author):
+    data, _ = share.scan_package(_scan(scan), author.model_dump())
+    return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{Path(scan).stem}.zip"'})
+
+
+@app.post("/api/zenodo/{scan}")
+def zenodo_draft(scan: str, req: ZenodoReq):
+    sc = _scan(scan)
+    data, _ = share.scan_package(sc, req.author.model_dump())
+    meta = share.zenodo_metadata(sc, req.author.model_dump(), zenodo.creator(req.author.model_dump()))
+    try:
+        return zenodo.draft({f"{Path(scan).stem}.zip": data}, meta, req.token, req.sandbox)
+    except Exception as exc:
+        raise HTTPException(502, str(exc))
+
+
+@app.post("/api/zenodo-publish")
+def zenodo_publish(req: PublishReq):
+    try:
+        return zenodo.publish(req.id, req.token, req.sandbox)
+    except Exception as exc:
+        raise HTTPException(502, str(exc))
 
 
 app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="web")

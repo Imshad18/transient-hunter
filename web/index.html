@@ -55,6 +55,23 @@
       <div class="card detail" id="detail"><p class="empty-note">Select a transient.</p></div>
     </section>
 
+    <section class="card share-card">
+      <div class="panel-title"><h3>Share this scan</h3><span>archive the ranked list with a DOI</span></div>
+      <div class="share-row">
+        <div class="author" id="authorBox"></div>
+        <div class="share-actions">
+          <button class="btn" id="pkgBtn">Download scan package</button>
+          <input id="zToken" type="password" placeholder="Zenodo token">
+          <label class="muted"><input type="checkbox" id="zSandbox" checked> sandbox</label>
+          <button class="btn" id="zBtn">Upload to Zenodo</button>
+          <span id="zNote" class="muted"></span>
+        </div>
+      </div>
+      <p class="muted" style="margin:8px 0 0">Zenodo gives the list a permanent DOI under your name. Token:
+        <a target="_blank" rel="noopener" href="https://zenodo.org/account/settings/applications/tokens/new/">zenodo.org → Applications → Personal access token</a>
+        (scopes deposit:write and deposit:actions). The sandbox server is for testing.</p>
+    </section>
+
     <section class="card">
       <div class="panel-title"><h3>Sky positions</h3><span>colour = follow-up score</span></div>
       <div id="skyPlot" class="plot" style="height:380px"></div>

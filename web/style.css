@@ -22,3 +22,22 @@
   .main-grid { grid-template-columns: 1fr; }
   .detail { position: static; max-height: none; }
 }
+
+.share-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.share-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.share-actions input[type=password] { width: 200px; }
+.author { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.author input { width: 100%; }
+.contrib { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.contrib h3 { font-size: 15px; margin-bottom: 8px; }
+.cstep { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+.cstep h4 { margin: 0 0 4px; font-size: 13.5px; }
+.cstep p { margin: 0 0 8px; font-size: 12.5px; color: var(--muted); }
+.cstep .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.creds { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+.creds input { width: 100%; }
+.json-box { width: 100%; height: 220px; font: 11.5px var(--mono); margin-top: 6px; }
+.ok-note { color: var(--pass); } .err-note { color: var(--fail); }
+.phot-grid { display: grid; grid-template-columns: 1.4fr .8fr .6fr 1fr 1.4fr; gap: 6px; }
+.phot-grid input, .phot-grid select { width: 100%; }
+@media (max-width: 900px) { .share-row { grid-template-columns: 1fr; } .phot-grid { grid-template-columns: 1fr 1fr; } }

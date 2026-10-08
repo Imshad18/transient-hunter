@@ -60,7 +60,7 @@ $("#scanSelect").onchange = (e) => e.target.value && openScan(e.target.value);
 
 async function openScan(file) {
   const s = await api(`/api/scans/${encodeURIComponent(file)}`);
-  state.scan = s;
+  state.scan = s; state.scanFile = file;
   recompute();
   const c = s.candidates;
   const median = (a) => { const b = a.filter((x) => x != null).sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : null; };
@@ -153,6 +153,7 @@ function select(c) {
     <div class="label" style="margin-top:14px">Altitude from your location, next 16 h</div>
     <div id="obsPlot"></div>`;
   lightCurve(c); obsPlot(c);
+  renderContrib(c);
 }
 function lightCurve(c) {
   const traces = [], now = state.scan.now_mjd;
@@ -182,6 +183,165 @@ function obsPlot(c) {
   shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, y0: 30, y1: 30, line: { color: css("--line-2"), dash: "dot" } });
   Plotly.react("obsPlot", [{ x: g.times, y: alt, mode: "lines", line: { color: css("--accent"), width: 1.6 }, hovertemplate: "%{x|%H:%M}<br>alt %{y:.0f}°<extra></extra>" }],
     L({ shapes, xaxis: { tickformat: "%H:%M" }, yaxis: { title: "Alt (°)", range: [0, 90] }, margin: { l: 46, r: 10, t: 4, b: 30 } }), plotCfg);
+}
+
+/* ---------- contribute ---------- */
+const ls = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+function authorFields(prefix) {
+  const a = ls("author", {});
+  return `<input id="${prefix}Name" placeholder="Your name (as it should appear)" value="${esc(a.name || "")}">
+    <input id="${prefix}Aff" placeholder="Affiliation or Independent" value="${esc(a.affiliation || "")}">
+    <input id="${prefix}Email" placeholder="Email" value="${esc(a.email || "")}">
+    <input id="${prefix}Orcid" placeholder="ORCID (optional)" value="${esc(a.orcid || "")}">`;
+}
+function readAuthor(prefix) {
+  const a = { name: $(`#${prefix}Name`).value.trim(), affiliation: $(`#${prefix}Aff`).value.trim(), email: $(`#${prefix}Email`).value.trim(), orcid: $(`#${prefix}Orcid`).value.trim() };
+  lsSet("author", a); return a;
+}
+function creds() { return ls("tns", { bot_id: "", bot_name: "", api_key: "", groupid: "0", sandbox: true }); }
+function readCreds() {
+  const c = { bot_id: $("#tBotId").value.trim(), bot_name: $("#tBotName").value.trim(), api_key: $("#tKey").value.trim(),
+              groupid: $("#tGroup").value.trim() || "0", sandbox: $("#tSandbox").checked };
+  lsSet("tns", c); return c;
+}
+async function tnsChoices() { if (!state.tnsChoices) state.tnsChoices = await api("/api/tns/choices"); return state.tnsChoices; }
+
+function renderContrib(c) {
+  const t = creds(), host = t.sandbox ? "sandbox.wis-tns.org" : "www.wis-tns.org";
+  const box = document.createElement("div");
+  box.className = "contrib";
+  box.innerHTML = `
+    <h3>Contribute</h3>
+    <div class="cstep"><h4>1. Your details and TNS bot</h4>
+      <p>The Transient Name Server credits reports to you. Register at <a target="_blank" rel="noopener" href="https://www.wis-tns.org/">wis-tns.org</a>, then create a bot on the
+        <a target="_blank" rel="noopener" href="https://www.wis-tns.org/bots">Bots page</a> to get its id, name and API key. Saved in this browser only.</p>
+      <div class="creds">${authorFields("a")}</div>
+      <div class="creds"><input id="tBotId" placeholder="Bot id" value="${esc(t.bot_id)}"><input id="tBotName" placeholder="Bot name" value="${esc(t.bot_name)}">
+        <input id="tKey" type="password" placeholder="API key" value="${esc(t.api_key)}"><input id="tGroup" placeholder="Your TNS group id (0 = none)" value="${esc(t.groupid)}"></div>
+      <label class="muted"><input type="checkbox" id="tSandbox" ${t.sandbox ? "checked" : ""}> use the TNS sandbox (test server, wiped weekly)</label></div>
+
+    <div class="cstep"><h4>2. Is it already on TNS?</h4>
+      <p>Most ZTF transients are reported automatically by brokers within hours. Discovery credit goes to whoever reports first.</p>
+      <div class="row"><button class="btn" id="tCheck">Check TNS</button><a class="btn" target="_blank" rel="noopener" href="https://${host}/search?ra=${c.ra}&decl=${c.dec}&radius=5&coords_unit=arcsec">Open TNS search ↗</a></div>
+      <div id="tCheckOut" class="muted" style="margin-top:6px"></div></div>
+
+    <div class="cstep"><h4>3. Report it as a new transient</h4>
+      <p>Only if step 2 found nothing. The report uses the public ZTF photometry, credits ZTF as the data source and you as the reporter, and TNS assigns an AT name.</p>
+      <div class="row"><button class="btn" id="tPrev">Prepare discovery report</button></div><div id="tRepOut"></div></div>
+
+    <div class="cstep"><h4>4. Observe it and report your photometry</h4>
+      <p>Your measurements are added to the TNS record under your name. No telescope? Remote ones are available through
+        <a target="_blank" rel="noopener" href="https://lco.global/education/partners/">Las Cumbres Global Sky Partners</a> (free for education projects) or
+        <a target="_blank" rel="noopener" href="https://www.itelescope.net/">iTelescope</a>.
+        Finder: <a target="_blank" rel="noopener" href="https://www.legacysurvey.org/viewer?ra=${c.ra}&dec=${c.dec}&layer=ls-dr10&zoom=15&mark=${c.ra},${c.dec}">Legacy Survey ↗</a></p>
+      <div class="row"><button class="btn" id="tPhotAdd">Add a measurement</button></div><div id="tPhot"></div></div>
+
+    <div class="cstep"><h4>5. Write an AstroNote</h4>
+      <p>A short public note on TNS, credited to you, that points others to an interesting object. Post it from the AstroNotes page while logged in.</p>
+      <div class="row"><button class="btn" id="tNote">Draft AstroNote</button><a class="btn" target="_blank" rel="noopener" href="https://www.wis-tns.org/astronotes">AstroNotes ↗</a></div><div id="tNoteOut"></div></div>
+
+    <div class="cstep"><h4>6. Citizen science with discovery credit</h4>
+      <p>Volunteers who flag real transients in these projects are named in the TNS discovery reports.</p>
+      <div class="row"><a class="btn" target="_blank" rel="noopener" href="https://www.zooniverse.org/projects/nova-van/kilonova-seekers">Kilonova Seekers ↗</a>
+        <a class="btn" target="_blank" rel="noopener" href="https://www.zooniverse.org/projects/dwright04/supernova-hunters">Supernova Hunters ↗</a></div></div>`;
+  $("#detail").appendChild(box);
+  for (const id of ["#tBotId", "#tBotName", "#tKey", "#tGroup", "#tSandbox"]) $(id).onchange = readCreds;
+  for (const id of ["#aName", "#aAff", "#aEmail", "#aOrcid"]) $(id).onchange = () => readAuthor("a");
+  const need = () => { const k = readCreds(); if (!k.bot_id || !k.bot_name || !k.api_key) { toast("Enter your TNS bot id, name and API key in step 1"); return null; } return k; };
+
+  $("#tCheck").onclick = async () => {
+    const k = need(); if (!k) return;
+    $("#tCheckOut").textContent = "Searching TNS…";
+    try {
+      const r = await api("/api/tns/check", { method: "POST", body: JSON.stringify({ scan: state.scanFile, oid: c.oid, creds: k, sandbox: k.sandbox }) });
+      $("#tCheckOut").innerHTML = r.matches.length ? r.matches.map((m) => `<div><a target="_blank" rel="noopener" href="${esc(m.url)}"><b>${esc(m.objname)}</b></a>
+          ${m.type ? `· ${esc(m.type)}` : "· unclassified"} · reported by ${esc(m.reporting_group || m.discoverer || "?")}${m.discovery_date ? ` on ${esc(m.discovery_date.slice(0, 10))}` : ""}</div>`).join("")
+          + `<div>Already on TNS. You can still add follow-up photometry (step 4) or an AstroNote (step 5)${r.matches.some((m) => !m.type) ? "; it is still unclassified, so a spectrum would be valuable" : ""}.</div>`
+        : `<span class="ok-note">Not on TNS within 3″. You can report it (step 3).</span>`;
+    } catch (e) { $("#tCheckOut").innerHTML = `<span class="err-note">${esc(e.message)}</span>`; }
+  };
+
+  const showReport = (rep, label) => {
+    $("#tRepOut").innerHTML = `<textarea class="json-box" id="tJson">${esc(JSON.stringify(rep, null, 2))}</textarea>
+      <div class="row"><button class="btn primary" id="tSend">${label}</button><span id="tSendOut" class="muted"></span></div>`;
+    $("#tSend").onclick = async () => {
+      const k = need(); if (!k) return;
+      let report; try { report = JSON.parse($("#tJson").value); } catch { toast("The report is not valid JSON"); return; }
+      if (!confirm(`Submit this report to ${k.sandbox ? "the TNS SANDBOX (test)" : "the real Transient Name Server"} as ${report.at_report["0"].reporter}?`)) return;
+      $("#tSendOut").textContent = "Submitting… TNS processes reports in a few seconds.";
+      try {
+        const r = await api("/api/tns/submit", { method: "POST", body: JSON.stringify({ report, creds: k, sandbox: k.sandbox }) });
+        $("#tSendOut").innerHTML = `<span class="ok-note">Accepted (report ${esc(r.report_id)})${r.objnames.length ? `: object ${r.objnames.map((n) => `<a target="_blank" rel="noopener" href="https://${k.sandbox ? "sandbox" : "www"}.wis-tns.org/object/${esc(n)}">${esc(n)}</a>`).join(", ")}` : ""}.</span>`
+          + `<details><summary>TNS reply</summary><pre class="console">${esc(JSON.stringify(r.reply, null, 1))}</pre></details>`;
+      } catch (e) { $("#tSendOut").innerHTML = `<span class="err-note">${esc(e.message)}</span>`; }
+    };
+  };
+  $("#tPrev").onclick = async () => {
+    const a = readAuthor("a"); if (!a.name) { toast("Enter your name in step 1"); return; }
+    const rep = await api("/api/tns/preview", { method: "POST", body: JSON.stringify({ scan: state.scanFile, oid: c.oid, reporter: a.name, reporting_groupid: readCreds().groupid }) });
+    showReport(rep, "Submit discovery report");
+  };
+
+  $("#tPhotAdd").onclick = async () => {
+    const ch = await tnsChoices();
+    const opt = (list, sel) => list.map((x) => `<option value="${x.id}" ${x.id === sel ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+    const row = document.createElement("div");
+    row.className = "phot-grid"; row.style.marginTop = "6px";
+    row.innerHTML = `<input type="datetime-local" class="pDate" step="1"><input class="pMag" placeholder="mag"><input class="pErr" placeholder="± err">
+      <select class="pFilt">${opt(ch.filters, "1")}</select><select class="pInst">${opt(ch.instruments, "0")}</select>`;
+    $("#tPhot").appendChild(row);
+    if (!$("#tPhotSend")) {
+      const b = document.createElement("div"); b.className = "row"; b.style.marginTop = "6px";
+      b.innerHTML = `<button class="btn" id="tPhotSend">Prepare photometry report</button><span class="muted">time in UTC; choose "Other" if your instrument isn't listed</span>`;
+      $("#tPhot").after(b);
+      $("#tPhotSend").onclick = async () => {
+        const a = readAuthor("a"); if (!a.name) { toast("Enter your name in step 1"); return; }
+        const points = [...document.querySelectorAll("#tPhot .phot-grid")].map((r) => ({
+          obsdate: r.querySelector(".pDate").value, mag: r.querySelector(".pMag").value, err: r.querySelector(".pErr").value,
+          filterid: r.querySelector(".pFilt").value, instrumentid: r.querySelector(".pInst").value, observer: a.name })).filter((p) => p.obsdate && p.mag);
+        if (!points.length) { toast("Fill in date and magnitude"); return; }
+        const rep = await api("/api/tns/preview", { method: "POST", body: JSON.stringify({ scan: state.scanFile, oid: c.oid, reporter: a.name, reporting_groupid: readCreds().groupid, kind: "photometry", points }) });
+        showReport(rep, "Submit photometry report");
+        $("#tRepOut").scrollIntoView({ behavior: "smooth", block: "center" });
+      };
+    }
+  };
+
+  $("#tNote").onclick = async () => {
+    const r = await api(`/api/astronote/${encodeURIComponent(state.scanFile)}/${encodeURIComponent(c.oid)}`, { method: "POST", body: JSON.stringify(readAuthor("a")) });
+    $("#tNoteOut").innerHTML = `<textarea class="json-box" id="tNoteText">${esc(r.text)}</textarea><div class="row"><button class="btn small" id="tNoteCopy">Copy</button></div>`;
+    $("#tNoteCopy").onclick = () => { navigator.clipboard.writeText($("#tNoteText").value); toast("Copied"); };
+  };
+}
+
+function initShare() {
+  $("#authorBox").innerHTML = authorFields("s");
+  const z = ls("zenodo", { sandbox: true });
+  $("#zToken").value = z.token || ""; $("#zSandbox").checked = z.sandbox !== false;
+  const saveZ = () => { const v = { token: $("#zToken").value.trim(), sandbox: $("#zSandbox").checked }; lsSet("zenodo", v); return v; };
+  $("#zToken").onchange = saveZ; $("#zSandbox").onchange = saveZ;
+  $("#pkgBtn").onclick = async () => {
+    if (!state.scanFile) return;
+    const res = await fetch(`/api/package/${encodeURIComponent(state.scanFile)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(readAuthor("s")) });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(await res.blob()); a.download = state.scanFile.replace(".json", ".zip"); a.click();
+  };
+  $("#zBtn").onclick = async () => {
+    const zz = saveZ(), au = readAuthor("s");
+    if (!zz.token) { $("#zNote").textContent = "Paste a Zenodo token first."; return; }
+    if (!au.name) { $("#zNote").textContent = "Enter your name first."; return; }
+    $("#zNote").textContent = "Uploading…";
+    try {
+      const d = await api(`/api/zenodo/${encodeURIComponent(state.scanFile)}`, { method: "POST", body: JSON.stringify({ author: au, token: zz.token, sandbox: zz.sandbox }) });
+      $("#zNote").innerHTML = `Draft ready${d.doi ? ` (DOI ${esc(d.doi)})` : ""}. <a target="_blank" rel="noopener" href="${esc(d.html)}">Review ↗</a> <button class="btn small" id="zPub">Publish</button>`;
+      $("#zPub").onclick = async () => {
+        if (!confirm(`Publish on ${zz.sandbox ? "the Zenodo TEST server" : "Zenodo"}? Published records and DOIs are permanent.`)) return;
+        try { const p = await api("/api/zenodo-publish", { method: "POST", body: JSON.stringify({ id: d.id, token: zz.token, sandbox: zz.sandbox }) });
+          $("#zNote").innerHTML = `<span class="ok-note">Published: <a target="_blank" rel="noopener" href="${esc(p.url)}">${esc(p.doi)}</a></span>`; }
+        catch (e) { $("#zNote").innerHTML = `<span class="err-note">${esc(e.message)}</span>`; }
+      };
+    } catch (e) { $("#zNote").innerHTML = `<span class="err-note">${esc(e.message)}</span>`; }
+  };
 }
 
 /* ---------- sky map ---------- */
@@ -234,6 +394,7 @@ function initTheme() {
 
 (async function main() {
   initTheme();
+  initShare();
   let loc = null;
   try { loc = JSON.parse(localStorage.getItem("loc")); } catch {}
   // default: longitude from the browser's time zone, mid-northern latitude
