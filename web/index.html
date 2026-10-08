@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transient Hunter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/plotly.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" class="logo"><circle cx="16" cy="16" r="3" fill="currentColor"/><path d="M16 3v7M16 22v7M3 16h7M22 16h7M7 7l4.5 4.5M20.5 20.5L25 25M25 7l-4.5 4.5M11.5 20.5L7 25" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <div><h1>Transient Hunter</h1><p>New supernovae and other transients from the ZTF alert stream</p></div>
+    </div>
+    <nav>
+      <select id="scanSelect" title="Scan"></select>
+      <button class="btn small" id="themeBtn">Theme</button>
+    </nav>
+  </header>
+
+  <div class="page">
+    <section class="card controls">
+      <label class="field">First seen within
+        <select id="optDays"><option value="7">7 days</option><option value="14" selected>14 days</option><option value="30">30 days</option></select></label>
+      <label class="field">Min. SN probability
+        <select id="optProb"><option value="0.3">0.3</option><option value="0.4" selected>0.4</option><option value="0.6">0.6</option></select></label>
+      <label class="field">Max. objects
+        <select id="optMax"><option value="100">100</option><option value="200" selected>200</option><option value="400">400</option></select></label>
+      <button class="btn primary" id="scanBtn">Run scan</button>
+      <div class="sep"></div>
+      <label class="field">Your latitude<input id="lat" type="number" step="0.1" style="width:90px"></label>
+      <label class="field">Longitude<input id="lon" type="number" step="0.1" style="width:90px"></label>
+      <button class="btn" id="geoBtn">Use my location</button>
+      <div class="job hidden" id="jobBox"><div class="bar"><div id="jobBar"></div></div><span class="muted" id="jobMsg"></span></div>
+    </section>
+
+    <section class="metrics" id="metrics"></section>
+
+    <section class="main-grid">
+      <div class="card">
+        <div class="panel-title">
+          <h3>Candidates</h3>
+          <div class="tabs" id="filterTabs">
+            <button class="tab on" data-f="all">All</button><button class="tab" data-f="rising">Rising</button>
+            <button class="tab" data-f="bright">Brighter than 18.5</button><button class="tab" data-f="young">Under 5 days old</button>
+            <button class="tab" data-f="tonight">Visible tonight</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table class="data-table" id="table"></table></div>
+      </div>
+      <div class="card detail" id="detail"><p class="empty-note">Select a transient.</p></div>
+    </section>
+
+    <section class="card">
+      <div class="panel-title"><h3>Sky positions</h3><span>colour = follow-up score</span></div>
+      <div id="skyPlot" class="plot" style="height:380px"></div>
+    </section>
+    <p class="muted foot">Alerts: Zwicky Transient Facility via the ALeRCE broker. Type hints come from light-curve shape and colour only;
+      a spectrum is what actually classifies a transient. Check the Transient Name Server before reporting anything as new.</p>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
